@@ -1,102 +1,71 @@
+# agent.py - Improved Telecom AI Agent
 import speech_recognition as sr
 from gtts import gTTS
 import pygame
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
-import json
+from sqlalchemy import text
 
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 
-class IIITAllahabadAdmissionAI:
+try:
+    from db import engine
+except ImportError:
+    print("Create db.py with TiDB connection")
+    exit(1)
+
+class TelecomAIAgent:
     def __init__(self):
         self.recognizer = sr.Recognizer()
         self.model = genai.GenerativeModel("gemini-1.5-flash")
         pygame.mixer.init()
+        self.engine = engine
+        self.current_phone = None  
         
-        self.admission_data = {
-            "courses": {
-                "btech": {
-                    "name": "Bachelor of Technology",
-                    "branches": ["Computer Science Engineering", "Electronics and Communication Engineering", 
-                               "Information Technology", "Artificial Intelligence"],
-                    "duration": "4 years",
-                    "seats": 480,
-                    "fee": "₹1,25,000 per semester"
-                },
-                "mtech": {
-                    "name": "Master of Technology",
-                    "branches": ["Computer Science", "Electronics and Communication", 
-                               "Artificial Intelligence", "Cybersecurity"],
-                    "duration": "2 years", 
-                    "seats": 120,
-                    "fee": "₹95,000 per semester"
-                },
-                "phd": {
-                    "name": "Doctor of Philosophy",
-                    "branches": ["Computer Science", "Electronics", "Mathematics", "Physics"],
-                    "duration": "3-6 years",
-                    "seats": 60,
-                    "fee": "₹25,000 per semester"
+        self.telecom_data = {
+            "recharge_plans": {
+                "prepaid": {
+                    "budget_plans": [
+                        {"name": "Smart 199", "price": 199, "data": "2GB/day", "validity": "28 days", "calls": "Unlimited"},
+                        {"name": "Value 299", "price": 299, "data": "1.5GB/day", "validity": "28 days", "calls": "Unlimited"},
+                        {"name": "Popular 349", "price": 349, "data": "2.5GB/day", "validity": "28 days", "calls": "Unlimited"}
+                    ],
+                    "premium_plans": [
+                        {"name": "Max 599", "price": 599, "data": "2GB/day", "validity": "84 days", "calls": "Unlimited"},
+                        {"name": "Super 999", "price": 999, "data": "3GB/day", "validity": "84 days", "calls": "Unlimited"}
+                    ]
                 }
             },
             
-            "admission_process": {
-                "btech": "JEE Main rank-based admission through JoSAA counselling",
-                "mtech": "GATE score required, followed by institute counselling", 
-                "phd": "Written test and interview, minimum 60% in qualifying degree"
+            "services": {
+                "customer_care": "199 (toll-free)",
+                "balance_check": "*123#",
+                "data_check": "*121#",
+                "plan_info": "*333#",
+                "website": "www.telecom.com",
+                "app": "MyTelecom App"
             },
             
-            "eligibility": {
-                "btech": "12th pass with Physics, Chemistry, Mathematics. Minimum 75% aggregate",
-                "mtech": "Bachelor's degree in relevant engineering field with minimum 60%",
-                "phd": "Master's degree in relevant field with minimum 60% or GATE qualification"
+            "support_info": {
+                "network_issues": "Restart phone, check network settings, or visit service center",
+                "recharge_failed": "Check payment method, sufficient balance, or try again after 30 minutes",
+                "data_not_working": "Check APN settings, restart phone, or contact 199",
+                "bill_queries": "Login to app or website, or call 199 for bill details"
             },
             
-            "cutoffs_2024": {
-                "btech_cse": "JEE Main rank: 8000-12000 (General), 15000-20000 (OBC), 25000-35000 (SC/ST)",
-                "btech_ece": "JEE Main rank: 12000-18000 (General), 20000-28000 (OBC), 35000-45000 (SC/ST)",
-                "mtech_cse": "GATE score: 650+ (General), 550+ (OBC), 450+ (SC/ST)"
-            },
-            
-            "important_dates": {
-                "application_start": "March 15, 2025",
-                "application_deadline": "May 20, 2025", 
-                "entrance_exam": "June 1-15, 2025",
-                "counselling": "July 10-25, 2025",
-                "classes_start": "August 1, 2025"
-            },
-            
-            "facilities": [
-                "24/7 WiFi campus",
-                "Modern computer labs with latest software",
-                "Well-stocked library with digital resources", 
-                "Sports facilities including cricket, football, basketball courts",
-                "Separate hostels for boys and girls",
-                "Medical center with qualified doctors",
-                "Canteen with hygienic food",
-                "Placement cell with 85% placement record"
-            ],
-            
-            "placement_stats": {
-                "average_package": "₹12.5 lakhs per annum",
-                "highest_package": "₹45 lakhs per annum", 
-                "top_recruiters": ["Google", "Microsoft", "Amazon", "TCS", "Infosys", "Wipro", "Adobe", "Samsung"],
-                "placement_percentage": "85%"
-            },
-            
-            "contact_info": {
-                "address": "IIIT Allahabad, Jhalwa, Prayagraj, Uttar Pradesh - 211015",
-                "phone": "+91-532-2922000",
-                "email": "admissions@iiita.ac.in",
-                "website": "www.iiita.ac.in"
+            "offers": {
+                "weekend_offer": "Double data on weekends with select plans",
+                "student_discount": "20% off on annual plans with valid student ID",
+                "family_pack": "Additional connections at 50% discount"
             }
         }
-        
+    
     def listen(self):
+        """Voice input from user - English recognition like admission assistant"""
         with sr.Microphone() as source:
             print("Listening...")
             self.recognizer.adjust_for_ambient_noise(source)
@@ -116,8 +85,9 @@ class IIITAllahabadAdmissionAI:
                 return ""
     
     def speak(self, text):
-        print(f"IIIT Assistant: {text}")
-        filename = f"iiit_response_{os.getpid()}.mp3"
+        """Voice output to user"""
+        print(f"Telecom Assistant: {text}")
+        filename = f"telecom_response_{os.getpid()}.mp3"
         try:
             tts = gTTS(text=text, lang='en', tld='co.in', slow=False)
             tts.save(filename)
@@ -131,112 +101,227 @@ class IIITAllahabadAdmissionAI:
         except Exception as e:
             print(f"Speech error: {e}")
     
+    def get_user_info(self, phone):
+        """Get user data from database"""
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text("""
+                    SELECT u.name, u.balance_mb, p.plan_name, p.price, p.data_gb, p.validity_days
+                    FROM users u 
+                    JOIN plans p ON u.plan_id = p.plan_id
+                    WHERE u.phone = :phone
+                """), {'phone': phone})
+                return result.fetchone()
+        except Exception as e:
+            print(f"Database error: {e}")
+            return None
+    
+    def get_plans_by_budget(self, max_price):
+        """Get plans within budget"""
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text("""
+                    SELECT plan_name, price, data_gb, validity_days
+                    FROM plans 
+                    WHERE price <= :max_price
+                    ORDER BY price
+                """), {'max_price': max_price})
+                return result.fetchall()
+        except Exception as e:
+            print(f"Database error: {e}")
+            return []
+    
+    def get_last_recharge(self, phone):
+        """Get recent transaction"""
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text("""
+                    SELECT t.amount, t.txn_date, t.status
+                    FROM transactions t
+                    JOIN users u ON t.user_id = u.user_id
+                    WHERE u.phone = :phone
+                    ORDER BY t.txn_date DESC
+                    LIMIT 1
+                """), {'phone': phone})
+                return result.fetchone()
+        except Exception as e:
+            print(f"Database error: {e}")
+            return None
+    
+    def extract_phone_number(self, user_input):
+        """Extract phone number from user input"""
+        import re
+        phone_pattern = r'\b\d{10}\b'
+        match = re.search(phone_pattern, user_input)
+        if match:
+            return match.group()
+        return None
+    
     def find_relevant_data(self, user_input):
-        """Extract relevant admission data based on user query"""
+        """Extract relevant telecom data based on user query"""
         relevant_info = ""
         
-        if any(word in user_input for word in ["course", "courses", "branch", "branches", "program"]):
-            if "btech" in user_input or "bachelor" in user_input or "engineering" in user_input:
-                course_info = self.admission_data["courses"]["btech"]
-                relevant_info += f"B.Tech courses: {', '.join(course_info['branches'])}. Duration: {course_info['duration']}. Total seats: {course_info['seats']}. Fee: {course_info['fee']}. "
-            elif "mtech" in user_input or "master" in user_input:
-                course_info = self.admission_data["courses"]["mtech"] 
-                relevant_info += f"M.Tech courses: {', '.join(course_info['branches'])}. Duration: {course_info['duration']}. Total seats: {course_info['seats']}. Fee: {course_info['fee']}. "
-            elif "phd" in user_input or "doctorate" in user_input:
-                course_info = self.admission_data["courses"]["phd"]
-                relevant_info += f"PhD programs: {', '.join(course_info['branches'])}. Duration: {course_info['duration']}. Total seats: {course_info['seats']}. Fee: {course_info['fee']}. "
-            else:
-                relevant_info += "Available courses: B.Tech, M.Tech, and PhD in various specializations. "
+        if not self.current_phone:
+            return "Account verification required. Please restart the application."
         
-        if any(word in user_input for word in ["admission", "process", "how to apply", "apply"]):
-            if "btech" in user_input:
-                relevant_info += f"B.Tech admission: {self.admission_data['admission_process']['btech']}. "
-            elif "mtech" in user_input:
-                relevant_info += f"M.Tech admission: {self.admission_data['admission_process']['mtech']}. "
-            elif "phd" in user_input:
-                relevant_info += f"PhD admission: {self.admission_data['admission_process']['phd']}. "
-            else:
-                relevant_info += "Admission processes vary by course. B.Tech through JEE Main, M.Tech through GATE, PhD through entrance test. "
+        user_data = self.get_user_info(self.current_phone)
+        if not user_data:
+            return "User data not available from database. Please contact customer care 199."
         
-        if any(word in user_input for word in ["eligibility", "eligible", "qualification", "requirement"]):
-            if "btech" in user_input:
-                relevant_info += f"B.Tech eligibility: {self.admission_data['eligibility']['btech']}. "
-            elif "mtech" in user_input:
-                relevant_info += f"M.Tech eligibility: {self.admission_data['eligibility']['mtech']}. "
-            elif "phd" in user_input:
-                relevant_info += f"PhD eligibility: {self.admission_data['eligibility']['phd']}. "
+        name, balance_mb, plan_name, price, data_gb, validity_days = user_data
+        balance_gb = balance_mb / 1024 if balance_mb else 0
         
-        if any(word in user_input for word in ["cutoff", "cut off", "rank", "score", "marks"]):
-            if "cse" in user_input or "computer science" in user_input:
-                relevant_info += f"CSE cutoffs 2024: {self.admission_data['cutoffs_2024']['btech_cse']}. "
-            elif "ece" in user_input or "electronics" in user_input:
-                relevant_info += f"ECE cutoffs 2024: {self.admission_data['cutoffs_2024']['btech_ece']}. "
-            elif "mtech" in user_input:
-                relevant_info += f"M.Tech CSE cutoffs 2024: {self.admission_data['cutoffs_2024']['mtech_cse']}. "
-            else:
-                relevant_info += "2024 cutoffs available for CSE, ECE branches. Varies by category. "
+        if any(word in user_input for word in ["balance", "data", "remaining", "left", "kitna", "how much"]):
+            relevant_info += f"Dear {name}, your current data balance is {balance_gb:.1f} GB remaining. "
         
-        if any(word in user_input for word in ["date", "dates", "when", "deadline", "timeline"]):
-            dates = self.admission_data["important_dates"]
-            relevant_info += f"Important dates: Application starts {dates['application_start']}, deadline {dates['application_deadline']}, exam {dates['entrance_exam']}, counselling {dates['counselling']}, classes start {dates['classes_start']}. "
+        if any(word in user_input for word in ["plan", "current", "my plan", "active plan", "subscription"]):
+            relevant_info += f"Your active plan: {plan_name} at Rs.{price} with {data_gb}GB data for {validity_days} days validity. "
         
-        if any(word in user_input for word in ["fee", "fees", "cost", "expense", "money"]):
-            relevant_info += f"Fees: B.Tech {self.admission_data['courses']['btech']['fee']}, M.Tech {self.admission_data['courses']['mtech']['fee']}, PhD {self.admission_data['courses']['phd']['fee']}. "
+        if any(word in user_input for word in ["recharge", "new plan", "plan change", "under", "budget", "cheap", "affordable"]):
+            budget = 300 
+            if "200" in user_input or "two hundred" in user_input:
+                budget = 200
+            elif "500" in user_input or "five hundred" in user_input:
+                budget = 500
+            elif "1000" in user_input or "thousand" in user_input:
+                budget = 1000
+            
+            plans = self.get_plans_by_budget(budget)
+            if plans:
+                relevant_info += f"Available plans under Rs.{budget}: "
+                for i, plan in enumerate(plans[:3]):
+                    relevant_info += f"{plan[0]} Rs.{plan[1]} with {plan[2]}GB for {plan[3]} days"
+                    if i < len(plans[:3]) - 1:
+                        relevant_info += ", "
+                relevant_info += ". "
+            
+            if budget <= 400:
+                budget_plans = self.telecom_data["recharge_plans"]["prepaid"]["budget_plans"]
+                relevant_info += f"Popular options: "
+                for plan in budget_plans:
+                    if plan["price"] <= budget:
+                        relevant_info += f"{plan['name']} Rs.{plan['price']} with {plan['data']} for {plan['validity']}, "
         
-        if any(word in user_input for word in ["facility", "facilities", "campus", "hostel", "library"]):
-            facilities = ', '.join(self.admission_data["facilities"][:4])  # First 4 facilities
-            relevant_info += f"Campus facilities include: {facilities} and more. "
+        if any(word in user_input for word in ["last recharge", "history", "payment", "transaction", "when recharged"]):
+            txn = self.get_last_recharge(self.current_phone)
+            if txn:
+                date_str = txn[1].strftime('%d %B %Y') if txn[1] else "N/A"
+                relevant_info += f"Your last recharge: Rs.{txn[0]} on {date_str}. Status: {txn[2]}. "
         
-        if any(word in user_input for word in ["placement", "placements", "job", "salary", "package", "companies"]):
-            placement = self.admission_data["placement_stats"]
-            relevant_info += f"Placement stats: {placement['placement_percentage']} students placed, average package {placement['average_package']}, highest {placement['highest_package']}. Top recruiters: {', '.join(placement['top_recruiters'][:4])} and more. "
+        if any(word in user_input for word in ["help", "problem", "support", "customer care", "complaint", "issue"]):
+            services = self.telecom_data["services"]
+            relevant_info += f"Customer support available at {services['customer_care']}. Check balance: {services['balance_check']}, data: {services['data_check']}. "
         
-        if any(word in user_input for word in ["contact", "phone", "email", "address", "location"]):
-            contact = self.admission_data["contact_info"]
-            relevant_info += f"Contact details: Address - {contact['address']}, Phone - {contact['phone']}, Email - {contact['email']}, Website - {contact['website']}. "
+        if any(word in user_input for word in ["network", "slow", "not working", "connection", "internet"]):
+            support = self.telecom_data["support_info"]
+            relevant_info += f"For network issues: {support['network_issues']}. Data not working: {support['data_not_working']}. "
+        
+        if any(word in user_input for word in ["offer", "discount", "deal", "cashback", "free"]):
+            offers = self.telecom_data["offers"]
+            relevant_info += f"Current offers: {offers['weekend_offer']}. {offers['student_discount']}. {offers['family_pack']}. "
+        
+        if any(word in user_input for word in ["bill", "payment due", "amount", "pay"]):
+            relevant_info += f"For bill queries: {self.telecom_data['support_info']['bill_queries']}. Use {self.telecom_data['services']['app']} or website {self.telecom_data['services']['website']}. "
         
         return relevant_info
     
     def get_ai_response(self, user_input):
+        """Generate AI response using relevant data"""
         relevant_data = self.find_relevant_data(user_input)
         
-        if relevant_data:
-            prompt = f"""You are an IIIT Allahabad admission assistant speaking in formal yet friendly Hinglish (mix of Hindi and English).
+        if relevant_data and "not found" not in relevant_data.lower() and "not available" not in relevant_data.lower():
+            prompt = f"""You are a professional telecom customer service agent speaking in formal yet friendly Hinglish.
             
             TONE GUIDELINES:
-            - Use formal, respectful language appropriate for educational institution
+            - Use formal, respectful language appropriate for customer service
             - Mix Hindi and English naturally but maintain professionalism
-            - Avoid casual expressions like "arrey yaar", "bhai", "dekho", "achha", "matlab" 
-            - Use respectful terms like "aap", "ji", "sir/madam" when appropriate
+            - Avoid casual expressions, use respectful terms like "aap", "ji", "sir/madam"
             - Keep responses concise (2-3 sentences) but informative
-            - Sound helpful and courteous, like a professional admission counselor
+            - Sound helpful and courteous, like a professional telecom agent
             
-            User asked: {user_input}
-            Relevant admission data: {relevant_data}
+            Customer query: {user_input}
+            Relevant telecom data: {relevant_data}
             
             Answer the query using ONLY the provided data. Be helpful, formal yet friendly."""
         else:
-            return "Maaf kijiye, mere paas ye information abhi available nahin hai. Kripaya admission office se contact kariye +91-532-2922000 par ya admissions@iiita.ac.in par email kariye."
+            return relevant_data if relevant_data else "Maaf kijiye sir/madam, abhi technical issues aa rahe hain. Customer care 199 par call kariye."
         
         try:
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
             print(f"AI Error: {e}")
-            return "Maaf kijiye, kuch technical issues aa rahe hain. Kripaya phir se try kariye ya admission office se contact kariye."
+            return "Maaf kijiye, kuch technical problem hai. Customer care 199 par call kariye immediate help ke liye."
+    
+    def get_phone_number_input(self):
+        """Get phone number via CLI input after voice greeting"""
+        greeting = "Namaskar! Main aap ki telecom assistant hun. Kripaya apna 10-digit mobile number type kariye terminal mein verification ke liye."
+        self.speak(greeting)
+        
+        while True:
+            try:
+                print("\n" + "="*50)
+                phone = input("Enter your 10-digit mobile number: ").strip()
+                if len(phone) == 10 and phone.isdigit():
+                    print(f"Checking account for {phone}...")
+                    user_data = self.get_user_info(phone)
+                    if user_data:
+                        print(f"Account verified: {user_data[0]}")
+                        verification_msg = f"Account verified ho gaya! Welcome {user_data[0]}. Ab aap voice commands use kar sakte hain."
+                        self.speak(verification_msg)
+                        self.current_phone = phone
+                        return True
+                    else:
+                        print("Mobile number not found in our records.")
+                        error_msg = "Ye number hamare records mein nahi mila. Kripaya sahi number type kariye ya customer care 199 par call kariye."
+                        self.speak(error_msg)
+                        retry = input("Try again? (y/n): ").strip().lower()
+                        if retry != 'y':
+                            return False
+                else:
+                    print("Please enter a valid 10-digit mobile number.")
+                    error_msg = "Galat number format. Kripaya 10-digit mobile number type kariye."
+                    self.speak(error_msg)
+            except KeyboardInterrupt:
+                print("\nExiting...")
+                return False
+            except Exception as e:
+                print(f"Error: {e}")
+                return False
     
     def start_conversation(self):
-        print("IIIT Allahabad Admission Assistant Started")
-        print("Say 'bye' or 'goodbye' to exit")
+        """Start the conversation"""
+        print("="*60)
+        print("         TELECOM AI AGENT STARTED")
+        print("="*60)
+        print("1. Listen to voice instruction")
+        print("2. Type your mobile number when asked")
+        print("3. Then use voice commands for queries")
+        print("4. Say 'bye' or 'goodbye' to exit")
+        print("="*60)
         
-        greeting = "Namaskar! Main IIIT Allahabad ki admission assistant hun. Aap ke admission related queries mein main aap ki help kar sakti hun. Kya jaanna chahte hain aap?"
-        self.speak(greeting)
+        if not self.get_phone_number_input():
+            farewell_msg = "Dhanyawad! Customer care 199 par call kariye help ke liye."
+            self.speak(farewell_msg)
+            print("Unable to verify account. Contact customer care: 199")
+            return
+        
+        user_data = self.get_user_info(self.current_phone)
+        print(f"\n🎤 Voice conversation started with {user_data[0]}")
+        print("Listening for your queries...")
+        
+        conversation_start = f"Ab main ready hun aap ke queries ke liye {user_data[0]}! Data balance, recharge plans, bill payment ya koi bhi sawal kar sakte hain."
+        self.speak(conversation_start)
         
         while True:
             user_input = self.listen()
             
-            if user_input and any(word in user_input for word in ["bye", "goodbye", "exit", "quit", "stop"]):
-                farewell = "Dhanyawad! IIIT Allahabad mein admission ke liye contact kariye +91-532-2922000 par. Aap ka din shubh ho!"
+            if user_input and any(word in user_input for word in ["bye", "goodbye", "exit", "quit", "thank you", "dhanyawad"]):
+                if self.current_phone:
+                    user_data = self.get_user_info(self.current_phone)
+                    farewell = f"Dhanyawad {user_data[0] if user_data else 'sir/madam'}! Customer care 199 par call kariye agar aur help chahiye. Aap ka din shubh ho!"
+                else:
+                    farewell = "Dhanyawad! Customer care 199 par call kariye agar help chahiye. Good day!"
                 self.speak(farewell)
                 break
                 
@@ -247,15 +332,14 @@ class IIITAllahabadAdmissionAI:
                 self.speak("Main aap ki baat samajh nahin payi. Kripaya apna sawal repeat kar dijiye.")
 
 def main():
-    
     try:
-        ai = IIITAllahabadAdmissionAI()
-        ai.start_conversation()
+        agent = TelecomAIAgent()
+        agent.start_conversation()
     except KeyboardInterrupt:
         print("\nProgram stopped by user.")
     except Exception as e:
-        print(f"Error starting assistant: {e}")
-        print("Please ensure all dependencies are installed and API key is configured.")
+        print(f"Error starting telecom agent: {e}")
+        print("Please ensure all dependencies are installed and database is configured.")
 
 if __name__ == "__main__":
     main()
